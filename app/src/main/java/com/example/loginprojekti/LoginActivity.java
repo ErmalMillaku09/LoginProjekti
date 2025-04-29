@@ -1,7 +1,11 @@
 package com.example.loginprojekti;
-
+import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
@@ -10,11 +14,15 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-
+import HelperClasses.EmailSender;
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnFailureListener;
@@ -37,6 +45,12 @@ public class LoginActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_login);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+            }
+        }
 
 
         emailEditText = findViewById(R.id.editTextEmail);
@@ -147,7 +161,25 @@ public class LoginActivity extends AppCompatActivity {
                                     if (task.isSuccessful()) {
                                         Toast.makeText(LoginActivity.this, "Logged In" , Toast.LENGTH_SHORT).show();
 
-                                        startActivity(new Intent(getApplicationContext(), MainActivity.class));
+                                        String userEmail = email;
+                                        try {
+                                            sendOTPEmail(userEmail);
+                                            createNotificationChannel();
+                                            showOTPNotification();
+                                        } catch (IllegalArgumentException e) {
+                                            // Handle invalid email format
+                                            Toast.makeText(LoginActivity.this, "Invalid email format. Please check the email and try again.", Toast.LENGTH_LONG).show();
+                                            e.printStackTrace();
+                                        } catch (Exception e) {
+                                            // Handle any other general errors
+                                            Toast.makeText(LoginActivity.this, "An error occurred while sending the OTP. Please try again later.", Toast.LENGTH_LONG).show();
+                                            e.printStackTrace();
+                                        }
+
+
+                                        Intent intent = new Intent(getApplicationContext(), OTPVerifyActivity.class);
+                                        intent.putExtra("userEmail", userEmail); // Pass the email to the next activity
+                                        startActivity(intent);
                                         finish();
                                     } else {
                                         Toast.makeText(LoginActivity.this, " " + task.getException().getMessage(), Toast.LENGTH_SHORT).show();
@@ -162,5 +194,43 @@ public class LoginActivity extends AppCompatActivity {
 
         }
     }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "OTPChannel";
+            String description = "Channel for OTP notifications";
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel("otp_channel_id", name, importance);
+            channel.setDescription(description);
+
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager != null) {
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+    }
+
+    private void showOTPNotification() {
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "otp_channel_id")
+                .setSmallIcon(R.mipmap.ic_notification) // Use your own icon
+                .setContentTitle("OTP Sent")
+                .setContentText("Your OTP has been sent to your email.")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+
+        // Check permission for Android 13+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            notificationManager.notify(1001, builder.build());
+        }
+    }
+    private void sendOTPEmail(String recipientEmail) {
+        // Create an instance of the EmailSender class
+        EmailSender emailSender = new EmailSender();
+
+        // You can now pass the user email to the sendEmail method
+        emailSender.sendEmail(recipientEmail);
+    }
 }
+
 //#Hustlinsinceday1
